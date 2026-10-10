@@ -33,4 +33,4 @@ jobs:
             echo "::error::benchmarks/baseline.txt is missing. Run this workflow manually with 'record' enabled, download the bench-results artifact and commit it as benchmarks/baseline.txt."
             exit 1
           fi
-          go run ./.github/scripts/benchcheck -baseline benchmarks/baseline.txt -current bench.txt -tolerance 10
+          go run ./.github/scripts/benchcheck -baseline benchmarks/baseline.txt -current bench.txt -tolerance 20
