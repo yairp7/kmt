@@ -375,21 +375,104 @@ func TestCommitter_DoesNotCommitWhileHeadPending(t *testing.T) {
 	}
 }
 
-func TestCommitter_StopsOnCommitError(t *testing.T) {
+// failingCollector fails the first `failures` commits, then records like collector.
+type failingCollector struct {
+	collector
+	failures int
+	attempts [][]int64
+}
+
+func (c *failingCollector) commit(offsets []int64) error {
+	c.mu.Lock()
+	c.attempts = append(c.attempts, append([]int64(nil), offsets...))
+	fail := len(c.attempts) <= c.failures
+	c.mu.Unlock()
+	if fail {
+		return errors.New("broker unavailable")
+	}
+	return c.collector.commit(offsets)
+}
+
+func (c *failingCollector) snapshotAttempts() [][]int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([][]int64(nil), c.attempts...)
+}
+
+func TestCommitter_RetriesFailedCommit(t *testing.T) {
 	et := kmt.New()
-	pushPending(et, 1)
-	boom := errors.New("boom")
-	cancel, done := startCommitter(et, func([]int64) error { return boom })
-	defer cancel()
+	pushPending(et, 1, 2)
+	c := &failingCollector{failures: 3}
+	cancel, done := startCommitter(et, c.commit)
 
 	mustMark(t, et, 1, kmt.StatusSuccess)
-	select {
-	case err := <-done:
-		if !errors.Is(err, boom) {
-			t.Fatalf("StartCommitter err = %v, want boom", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("StartCommitter did not return after commit error")
+	mustMark(t, et, 2, kmt.StatusSuccess)
+	waitFor(t, func() bool { got, _ := c.snapshot(); return len(got) == 2 })
+
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("StartCommitter err = %v, want context.Canceled", err)
+	}
+	if got, _ := c.snapshot(); !reflect.DeepEqual(got, []int64{1, 2}) {
+		t.Fatalf("committed = %v, want [1 2]", got)
+	}
+	if attempts := c.snapshotAttempts(); len(attempts) != 4 {
+		t.Fatalf("commit attempts = %v, want 3 failures then 1 success", attempts)
+	}
+}
+
+// If the committer stops while a commit is still failing, a restarted
+// committer must retry those offsets rather than skip them.
+func TestCommitter_RestartRetriesUncommittedOffsets(t *testing.T) {
+	et := kmt.New()
+	pushPending(et, 1, 2)
+	mustMark(t, et, 1, kmt.StatusSuccess)
+	mustMark(t, et, 2, kmt.StatusSuccess)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	boom := errors.New("boom")
+	if err := et.StartCommitter(ctx, time.Hour, func([]int64) error { return boom }); !errors.Is(err, boom) {
+		t.Fatalf("first StartCommitter err = %v, want boom", err)
+	}
+
+	pushPending(et, 3)
+	mustMark(t, et, 3, kmt.StatusSuccess)
+	c := &collector{}
+	cancel2, done := startCommitter(et, c.commit)
+	waitFor(t, func() bool { got, _ := c.snapshot(); return len(got) == 3 })
+	cancel2()
+	<-done
+
+	if got, _ := c.snapshot(); !reflect.DeepEqual(got, []int64{1, 2, 3}) {
+		t.Fatalf("committed after restart = %v, want [1 2 3]", got)
+	}
+}
+
+// Offsets resolved while a commit keeps failing are merged into the retried batch.
+func TestCommitter_RetryIncludesNewlyResolvedOffsets(t *testing.T) {
+	et := kmt.New()
+	pushPending(et, 1, 2)
+	c := &failingCollector{failures: 1 << 30}
+	cancel, done := startCommitter(et, c.commit)
+
+	mustMark(t, et, 1, kmt.StatusSuccess)
+	waitFor(t, func() bool { return len(c.snapshotAttempts()) >= 1 })
+	mustMark(t, et, 2, kmt.StatusSuccess)
+	waitFor(t, func() bool {
+		a := c.snapshotAttempts()
+		return reflect.DeepEqual(a[len(a)-1], []int64{1, 2})
+	})
+
+	c.mu.Lock()
+	c.failures = 0
+	c.mu.Unlock()
+	waitFor(t, func() bool { got, _ := c.snapshot(); return len(got) == 2 })
+
+	cancel()
+	<-done
+	if got, _ := c.snapshot(); !reflect.DeepEqual(got, []int64{1, 2}) {
+		t.Fatalf("committed = %v, want [1 2]", got)
 	}
 }
 

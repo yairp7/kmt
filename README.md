@@ -45,7 +45,7 @@ et.PopResolved() // [1 2 3]
 
 ### Background committer
 
-`StartCommitter` polls on an interval, pops the contiguous resolved prefix, and hands it to your commit callback. It blocks until the context is cancelled or the callback returns an error, so run it in its own goroutine. On cancellation it makes one final commit of whatever has resolved since the last tick, so `commitFunc` may be called after `ctx` is done.
+`StartCommitter` polls on an interval, pops the contiguous resolved prefix, and hands it to your commit callback. It blocks until the context is cancelled, so run it in its own goroutine. If the callback returns an error, the same offsets, plus any resolved since, are passed again on the next tick. On cancellation it makes one final commit of whatever is still uncommitted, so `commitFunc` may be called after `ctx` is done.
 
 ```go
 ctx, cancel := context.WithCancel(context.Background())
@@ -54,11 +54,14 @@ defer cancel()
 go func() {
     err := et.StartCommitter(ctx, 500*time.Millisecond, func(offsets []int64) error {
         // e.g. commit offsets[len(offsets)-1] to your broker
-        return commit(offsets)
+        if err := commit(offsets); err != nil {
+            log.Printf("commit failed, will retry: %v", err)
+            return err
+        }
+        return nil
     })
-    if err != nil && !errors.Is(err, context.Canceled) {
-        log.Printf("committer stopped: %v", err)
-    }
+    // err always wraps ctx.Err(); it also wraps the final commit's error if that failed.
+    log.Printf("committer stopped: %v", err)
 }()
 ```
 
@@ -87,8 +90,8 @@ Works directly with queues that expose per-partition `int64` offsets and a cumul
 - **Concurrent pushes:** if offsets can be pushed out of order (e.g. each worker pushes its own), use `WithStartOffset`. Otherwise the very first pop can happen before the lowest offset is pushed.
 - **Offset gaps:** every offset must be pushed for the tracker to advance past it. If the log has gaps (e.g. Kafka compaction or transaction markers), push the missing offsets as `StatusSuccess`.
 - **Failed events block progress** until they are re-marked `Success` or `DLQ`. If you want to skip a poison message, mark it `StatusDLQ`.
-- **Commit errors are fatal to the loop:** if `commitFunc` returns an error, `StartCommitter` returns it. The offsets passed to that call have already been popped from the tracker, so handle retries inside your callback.
-- **Shutdown flush:** when `ctx` is cancelled, `StartCommitter` commits the resolved prefix once more before returning. The returned error wraps `ctx.Err()` and, if that final commit failed, the commit error too, so check it with `errors.Is`.
+- **Commit errors are retried:** if `commitFunc` returns an error, the committer keeps the batch and passes it again on the next tick, extended with any offsets resolved since. The loop does not stop on commit errors, so log or alert from inside `commitFunc`. While the broker is unavailable the retried batch keeps growing. The batch is kept on the tracker, so if the committer stops with it still uncommitted, the next `StartCommitter` on the same tracker retries it first.
+- **Shutdown flush:** when `ctx` is cancelled, `StartCommitter` commits any uncommitted offsets once more before returning. The returned error wraps `ctx.Err()` and, if that final commit failed, the commit error too, so check it with `errors.Is`.
 - Run only one `StartCommitter` per tracker.
 
 ## Development

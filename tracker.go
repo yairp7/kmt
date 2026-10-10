@@ -37,6 +37,7 @@ type EventsTrackerImpl struct {
 	nextOffset           int64
 	nextOffsetKnown      bool
 	nextOffsetFixed      bool
+	uncommittedOffsets   []int64
 }
 
 type Option func(*EventsTrackerImpl)
@@ -58,6 +59,7 @@ func New(opts ...Option) *EventsTrackerImpl {
 		nextOffset:           0,
 		nextOffsetKnown:      false,
 		nextOffsetFixed:      false,
+		uncommittedOffsets:   make([]int64, 0),
 	}
 
 	for _, opt := range opts {
@@ -147,19 +149,20 @@ func (et *EventsTrackerImpl) StartCommitter(
 
 	commitIfNeeded := func() (bool, error) {
 		currentResolvedCount := et.ResolvedCount()
-		if et.committerOffsetCount == currentResolvedCount {
+		if len(et.uncommittedOffsets) == 0 && et.committerOffsetCount == currentResolvedCount {
 			return false, nil
 		}
 
-		offsets := et.PopResolved()
-		if len(offsets) == 0 {
+		et.uncommittedOffsets = append(et.uncommittedOffsets, et.PopResolved()...)
+		if len(et.uncommittedOffsets) == 0 {
 			return false, nil
 		}
 
-		if err := commitFunc(offsets); err != nil {
+		if err := commitFunc(et.uncommittedOffsets); err != nil {
 			return true, err
 		}
 
+		et.uncommittedOffsets = make([]int64, 0)
 		et.committerOffsetCount = currentResolvedCount
 
 		return true, nil
@@ -171,9 +174,7 @@ func (et *EventsTrackerImpl) StartCommitter(
 			_, err := commitIfNeeded()
 			return errors.Join(ctx.Err(), err)
 		case <-ticker.C:
-			if _, err := commitIfNeeded(); err != nil {
-				return err
-			}
+			_, _ = commitIfNeeded()
 		}
 	}
 }
