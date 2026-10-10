@@ -112,26 +112,35 @@ func (et *EventsTrackerImpl) StartCommitter(
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	commitIfNeeded := func() (bool, error) {
+		currentResolvedCount := et.ResolvedCount()
+		if et.committerOffsetCount == currentResolvedCount {
+			return false, nil
+		}
+
+		offsets := et.PopResolved()
+		if len(offsets) == 0 {
+			return false, nil
+		}
+
+		if err := commitFunc(offsets); err != nil {
+			return true, err
+		}
+
+		et.committerOffsetCount = currentResolvedCount
+
+		return true, nil
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			_, err := commitIfNeeded()
+			return errors.Join(ctx.Err(), err)
 		case <-ticker.C:
-			currentResolvedCount := et.ResolvedCount()
-			if et.committerOffsetCount == currentResolvedCount {
-				continue
-			}
-
-			offsets := et.PopResolved()
-			if len(offsets) == 0 {
-				continue
-			}
-
-			if err := commitFunc(offsets); err != nil {
+			if _, err := commitIfNeeded(); err != nil {
 				return err
 			}
-
-			et.committerOffsetCount = currentResolvedCount
 		}
 	}
 }

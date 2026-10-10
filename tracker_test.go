@@ -263,6 +263,59 @@ func TestCommitter_StopsOnCommitError(t *testing.T) {
 	}
 }
 
+func TestCommitter_FlushesOnCancel(t *testing.T) {
+	et := kmt.New()
+	pushPending(et, 1, 2)
+	mustMark(t, et, 1, kmt.StatusSuccess)
+	mustMark(t, et, 2, kmt.StatusSuccess)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	c := &collector{}
+	// The interval never elapses, so only the shutdown flush can commit.
+	err := et.StartCommitter(ctx, time.Hour, c.commit)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("StartCommitter err = %v, want context.Canceled", err)
+	}
+	if got, _ := c.snapshot(); !reflect.DeepEqual(got, []int64{1, 2}) {
+		t.Fatalf("committed on cancel = %v, want [1 2]", got)
+	}
+}
+
+func TestCommitter_FlushErrorIsReturnedOnCancel(t *testing.T) {
+	et := kmt.New()
+	pushPending(et, 1)
+	mustMark(t, et, 1, kmt.StatusSuccess)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	boom := errors.New("boom")
+	err := et.StartCommitter(ctx, time.Hour, func([]int64) error { return boom })
+	if !errors.Is(err, boom) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("StartCommitter err = %v, want both boom and context.Canceled", err)
+	}
+}
+
+func TestCommitter_KeepsRunningAfterCommit(t *testing.T) {
+	et := kmt.New()
+	pushPending(et, 1, 2)
+	c := &collector{}
+	cancel, done := startCommitter(et, c.commit)
+	defer cancel()
+
+	mustMark(t, et, 1, kmt.StatusSuccess)
+	waitFor(t, func() bool { _, calls := c.snapshot(); return calls == 1 })
+
+	select {
+	case err := <-done:
+		t.Fatalf("StartCommitter returned %v after a successful commit", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	mustMark(t, et, 2, kmt.StatusSuccess)
+	waitFor(t, func() bool { _, calls := c.snapshot(); return calls == 2 })
+}
+
 // Run with -race: concurrent pushes, marks and commits must neither race nor lose offsets.
 func TestCommitter_ConcurrentMarksCommitEverythingInOrder(t *testing.T) {
 	const n = 500

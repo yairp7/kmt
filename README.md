@@ -8,7 +8,7 @@ This is the typical problem when consuming from a log (Kafka-style) with concurr
 import "github.com/yairp7/kmt"
 ```
 
-Requires Go 1.19+. Standard library only.
+Requires Go 1.22+. Standard library only.
 
 ## How it works
 
@@ -43,7 +43,7 @@ et.PopResolved() // [1 2 3]
 
 ### Background committer
 
-`StartCommitter` polls on an interval, pops the contiguous resolved prefix, and hands it to your commit callback. It blocks until the context is cancelled or the callback returns an error, so run it in its own goroutine.
+`StartCommitter` polls on an interval, pops the contiguous resolved prefix, and hands it to your commit callback. It blocks until the context is cancelled or the callback returns an error, so run it in its own goroutine. On cancellation it makes one final commit of whatever has resolved since the last tick, so `commitFunc` may be called after `ctx` is done.
 
 ```go
 ctx, cancel := context.WithCancel(context.Background())
@@ -83,6 +83,7 @@ Works directly with queues that expose per-partition `int64` offsets and a cumul
 - **Ordering:** offsets are popped in ascending order regardless of push order.
 - **Failed events block progress** until they are re-marked `Success` or `DLQ`. If you want to skip a poison message, mark it `StatusDLQ`.
 - **Commit errors are fatal to the loop:** if `commitFunc` returns an error, `StartCommitter` returns it. The offsets passed to that call have already been popped from the tracker, so handle retries inside your callback.
+- **Shutdown flush:** when `ctx` is cancelled, `StartCommitter` commits the resolved prefix once more before returning. The returned error wraps `ctx.Err()` and, if that final commit failed, the commit error too, so check it with `errors.Is`.
 - Run only one `StartCommitter` per tracker.
 
 ## Development
