@@ -133,7 +133,7 @@ func (et *EventsTrackerImpl) PopResolved() []int64 {
 	return offsets
 }
 
-func (et *EventsTrackerImpl) ResolvedCount() int64 {
+func (et *EventsTrackerImpl) resolvedCount() int64 {
 	et.lock.RLock()
 	defer et.lock.RUnlock()
 	return et.resolvedOffsetCount
@@ -148,7 +148,7 @@ func (et *EventsTrackerImpl) StartCommitter(
 	defer ticker.Stop()
 
 	commitIfNeeded := func() (bool, error) {
-		currentResolvedCount := et.ResolvedCount()
+		currentResolvedCount := et.resolvedCount()
 		if len(et.uncommittedOffsets) == 0 && et.committerOffsetCount == currentResolvedCount {
 			return false, nil
 		}

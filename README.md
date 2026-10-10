@@ -74,7 +74,6 @@ go func() {
 | `Push(offset int64, event Event)` | Registers an offset. Pushing an offset that is already tracked, already popped, or below the start offset is ignored. |
 | `MarkResolved(offset int64, status EventsTrackerStatus) error` | Sets an offset's status. Returns `ErrMissingOffset` if the offset isn't tracked. A failed offset can be re-marked later (e.g. after a retry). |
 | `PopResolved() []int64` | Removes and returns the contiguous resolved offsets from the head, in ascending order. Returns an empty slice if the head is pending/failed. |
-| `ResolvedCount() int64` | Number of `Success`/`DLQ` markings so far. |
 | `StartCommitter(ctx, interval, commitFunc) error` | Periodic commit loop described above. |
 | `MinHeap[T]` | Generic offset-keyed min-heap (`Push`, `Pop`, `Peek`, `Len`) used internally; also exported. |
 

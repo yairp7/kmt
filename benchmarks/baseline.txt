@@ -14,9 +14,6 @@ BenchmarkTracker_MarkResolved-4           	13076653	       105.4 ns/op	       0 
 BenchmarkTracker_MarkResolvedMissing-4    	52870248	        22.29 ns/op	       0 B/op	       0 allocs/op
 BenchmarkTracker_MarkResolvedMissing-4    	51894012	        22.16 ns/op	       0 B/op	       0 allocs/op
 BenchmarkTracker_MarkResolvedMissing-4    	53212690	        22.64 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_ResolvedCount-4          	100000000	        11.83 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_ResolvedCount-4          	100000000	        11.74 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_ResolvedCount-4          	100000000	        11.75 ns/op	       0 B/op	       0 allocs/op
 BenchmarkTracker_PopResolved_Blocked/heap=10-4         	50542792	        24.87 ns/op	       0 B/op	       0 allocs/op
 BenchmarkTracker_PopResolved_Blocked/heap=10-4         	46417749	        24.78 ns/op	       0 B/op	       0 allocs/op
 BenchmarkTracker_PopResolved_Blocked/heap=10-4         	47458809	        25.99 ns/op	       0 B/op	       0 allocs/op

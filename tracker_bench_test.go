@@ -52,15 +52,6 @@ func BenchmarkTracker_MarkResolvedMissing(b *testing.B) {
 	}
 }
 
-func BenchmarkTracker_ResolvedCount(b *testing.B) {
-	et := kmt.New()
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = et.ResolvedCount()
-	}
-}
-
 // Head is pending, so PopResolved peeks once and returns without popping.
 func BenchmarkTracker_PopResolved_Blocked(b *testing.B) {
 	for _, size := range []int{10, 1_000, 100_000} {

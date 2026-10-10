@@ -36,9 +36,6 @@ func TestTracker_MarkResolvedMissingOffset(t *testing.T) {
 	if err := et.MarkResolved(42, kmt.StatusSuccess); !errors.Is(err, kmt.ErrMissingOffset) {
 		t.Fatalf("err = %v, want ErrMissingOffset", err)
 	}
-	if got := et.ResolvedCount(); got != 0 {
-		t.Fatalf("ResolvedCount() = %d, want 0", got)
-	}
 }
 
 func TestTracker_PendingHeadBlocksResolvedBehindIt(t *testing.T) {
@@ -111,21 +108,6 @@ func TestTracker_DLQCountsAsResolved(t *testing.T) {
 
 	if got, want := et.PopResolved(), []int64{1}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("PopResolved() = %v, want %v", got, want)
-	}
-}
-
-func TestTracker_ResolvedCountOnlyBumpsForTerminalStatuses(t *testing.T) {
-	et := kmt.New()
-	pushPending(et, 1, 2, 3)
-
-	mustMark(t, et, 1, kmt.StatusFailed)
-	if got := et.ResolvedCount(); got != 0 {
-		t.Fatalf("ResolvedCount() after Failed = %d, want 0", got)
-	}
-	mustMark(t, et, 2, kmt.StatusSuccess)
-	mustMark(t, et, 3, kmt.StatusDLQ)
-	if got := et.ResolvedCount(); got != 2 {
-		t.Fatalf("ResolvedCount() = %d, want 2", got)
 	}
 }
 
