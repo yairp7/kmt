@@ -1,51 +1,21 @@
 goos: linux
 goarch: amd64
 pkg: github.com/yairp7/kmt
-cpu: AMD EPYC 9V45 96-Core Processor                
-BenchmarkTracker_Push-4                   	 5955478	       254.3 ns/op	     125 B/op	       2 allocs/op
-BenchmarkTracker_Push-4                   	 5637102	       261.4 ns/op	     130 B/op	       2 allocs/op
-BenchmarkTracker_Push-4                   	 5730164	       257.4 ns/op	     128 B/op	       2 allocs/op
-BenchmarkTracker_PushDuplicate-4          	42817888	        27.46 ns/op	       8 B/op	       1 allocs/op
-BenchmarkTracker_PushDuplicate-4          	42409905	        27.76 ns/op	       8 B/op	       1 allocs/op
-BenchmarkTracker_PushDuplicate-4          	40029270	        28.70 ns/op	       8 B/op	       1 allocs/op
-BenchmarkTracker_MarkResolved-4           	16741114	       104.9 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_MarkResolved-4           	13927341	       131.2 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_MarkResolved-4           	13076653	       105.4 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_MarkResolvedMissing-4    	52870248	        22.29 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_MarkResolvedMissing-4    	51894012	        22.16 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_MarkResolvedMissing-4    	53212690	        22.64 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_PopResolved_Blocked/heap=10-4         	50542792	        24.87 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_PopResolved_Blocked/heap=10-4         	46417749	        24.78 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_PopResolved_Blocked/heap=10-4         	47458809	        25.99 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_PopResolved_Blocked/heap=1000-4       	46997359	        25.48 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_PopResolved_Blocked/heap=1000-4       	47473101	        25.50 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_PopResolved_Blocked/heap=1000-4       	47378500	        25.34 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_PopResolved_Blocked/heap=100000-4     	47909324	        26.04 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_PopResolved_Blocked/heap=100000-4     	41774750	        26.63 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_PopResolved_Blocked/heap=100000-4     	45919626	        25.48 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_PopResolved_Drain/batch=10-4          	  939681	      1188 ns/op	     256 B/op	       5 allocs/op
-BenchmarkTracker_PopResolved_Drain/batch=10-4          	 1000000	      1187 ns/op	     256 B/op	       5 allocs/op
-BenchmarkTracker_PopResolved_Drain/batch=10-4          	 1000000	      1163 ns/op	     256 B/op	       5 allocs/op
-BenchmarkTracker_PopResolved_Drain/batch=1000-4        	    8827	    135091 ns/op	   25216 B/op	      12 allocs/op
-BenchmarkTracker_PopResolved_Drain/batch=1000-4        	    8762	    136174 ns/op	   25216 B/op	      12 allocs/op
-BenchmarkTracker_PopResolved_Drain/batch=1000-4        	    8892	    135019 ns/op	   25216 B/op	      12 allocs/op
-BenchmarkTracker_PopResolved_Drain/batch=100000-4      	      54	  21477017 ns/op	 4101381 B/op	      28 allocs/op
-BenchmarkTracker_PopResolved_Drain/batch=100000-4      	      56	  21692139 ns/op	 4101379 B/op	      28 allocs/op
-BenchmarkTracker_PopResolved_Drain/batch=100000-4      	      55	  21541645 ns/op	 4101384 B/op	      28 allocs/op
-BenchmarkTracker_Cycle/backlog=0-4                     	 9578974	       123.4 ns/op	      32 B/op	       3 allocs/op
-BenchmarkTracker_Cycle/backlog=0-4                     	 9652182	       122.8 ns/op	      32 B/op	       3 allocs/op
-BenchmarkTracker_Cycle/backlog=0-4                     	 9620653	       124.0 ns/op	      32 B/op	       3 allocs/op
-BenchmarkTracker_Cycle/backlog=1000-4                  	 4581154	       263.9 ns/op	      32 B/op	       3 allocs/op
-BenchmarkTracker_Cycle/backlog=1000-4                  	 4529469	       264.5 ns/op	      32 B/op	       3 allocs/op
-BenchmarkTracker_Cycle/backlog=1000-4                  	 4488451	       271.1 ns/op	      32 B/op	       3 allocs/op
-BenchmarkTracker_Cycle/backlog=100000-4                	 3131037	       394.5 ns/op	      32 B/op	       3 allocs/op
-BenchmarkTracker_Cycle/backlog=100000-4                	 3195420	       402.3 ns/op	      32 B/op	       3 allocs/op
-BenchmarkTracker_Cycle/backlog=100000-4                	 3137936	       384.1 ns/op	      32 B/op	       3 allocs/op
-BenchmarkTracker_ParallelPush-4                        	 4723180	       313.9 ns/op	     139 B/op	       2 allocs/op
-BenchmarkTracker_ParallelPush-4                        	 4269369	       317.9 ns/op	     151 B/op	       2 allocs/op
-BenchmarkTracker_ParallelPush-4                        	 4567836	       299.3 ns/op	     143 B/op	       2 allocs/op
-BenchmarkTracker_ParallelMarkResolved-4                	 7799167	       144.3 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_ParallelMarkResolved-4                	 7977406	       153.5 ns/op	       0 B/op	       0 allocs/op
-BenchmarkTracker_ParallelMarkResolved-4                	 8478252	       157.5 ns/op	       0 B/op	       0 allocs/op
+cpu: AMD EPYC 7763 64-Core Processor                
+BenchmarkTracker_Push-4                   	 3897534	       325.9 ns/op	     156 B/op	       2 allocs/op
+BenchmarkTracker_PushDuplicate-4          	41775129	        28.24 ns/op	       8 B/op	       1 allocs/op
+BenchmarkTracker_MarkResolved-4           	10286868	       140.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTracker_MarkResolvedMissing-4    	96321984	        12.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTracker_PopResolved_Blocked/heap=10-4         	85448540	        12.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTracker_PopResolved_Blocked/heap=1000-4       	94184226	        12.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTracker_PopResolved_Blocked/heap=100000-4     	95222096	        12.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTracker_PopResolved_Drain/batch=10-4          	  581954	      2200 ns/op	     256 B/op	       5 allocs/op
+BenchmarkTracker_PopResolved_Drain/batch=1000-4        	    7879	    151658 ns/op	   25216 B/op	      12 allocs/op
+BenchmarkTracker_PopResolved_Drain/batch=100000-4      	      45	  27266390 ns/op	 4101408 B/op	      28 allocs/op
+BenchmarkTracker_Cycle/backlog=0-4                     	 7867203	       151.9 ns/op	      32 B/op	       3 allocs/op
+BenchmarkTracker_Cycle/backlog=1000-4                  	 3986871	       297.0 ns/op	      32 B/op	       3 allocs/op
+BenchmarkTracker_Cycle/backlog=100000-4                	 2694774	       440.2 ns/op	      32 B/op	       3 allocs/op
+BenchmarkTracker_ParallelPush-4                        	 3800952	       376.5 ns/op	     159 B/op	       2 allocs/op
+BenchmarkTracker_ParallelMarkResolved-4                	 8226238	       148.4 ns/op	       0 B/op	       0 allocs/op
 PASS
-ok  	github.com/yairp7/kmt	193.272s
+ok  	github.com/yairp7/kmt	61.800s
