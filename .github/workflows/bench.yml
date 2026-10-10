@@ -1,0 +1,36 @@
+name: bench
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      record:
+        description: Upload the results as a new baseline candidate (commit it to benchmarks/baseline.txt)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run benchmarks
+        run: go test -run '^$' -bench . -benchmem -count 3 ./... | tee bench.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bench-results
+          path: bench.txt
+      - name: Compare with baseline
+        if: ${{ !inputs.record }}
+        run: |
+          if [ ! -f benchmarks/baseline.txt ]; then
+            echo "::error::benchmarks/baseline.txt is missing. Run this workflow manually with 'record' enabled, download the bench-results artifact and commit it as benchmarks/baseline.txt."
+            exit 1
+          fi
+          go run ./.github/scripts/benchcheck -baseline benchmarks/baseline.txt -current bench.txt -tolerance 10
