@@ -12,7 +12,9 @@ Requires Go 1.22+. Standard library only.
 
 ## How it works
 
-Each event is registered by its offset with a status. Offsets are kept in a min-heap, so the lowest offset is always at the head. `PopResolved` removes and returns offsets from the head **only while they are resolved**; it stops at the first `Pending` or `Failed` offset. Anything behind a blocked head stays in the tracker until the head is resolved.
+Each event is registered by its offset with a status. Offsets are kept in a min-heap, so the lowest offset is always at the head. `PopResolved` removes and returns offsets from the head **only while they are resolved and contiguous**; it stops at the first `Pending` or `Failed` offset, or at a gap where the next offset hasn't been pushed yet. Anything behind a blocked head stays in the tracker until the head is resolved.
+
+The tracker remembers the next offset it expects to pop. Set it with `New(WithStartOffset(n))`, typically the partition's committed offset + 1. Without it, the tracker starts from the lowest offset pushed before the first pop.
 
 | Status          | Meaning                                        | Blocks commit? | Counts as resolved? |
 |-----------------|------------------------------------------------|----------------|---------------------|
@@ -64,8 +66,9 @@ go func() {
 
 | Symbol | Description |
 |--------|-------------|
-| `New() *EventsTrackerImpl` | Creates an empty tracker. |
-| `Push(offset int64, event Event)` | Registers an offset. Pushing an offset that is already tracked is ignored. |
+| `New(opts ...Option) *EventsTrackerImpl` | Creates an empty tracker. |
+| `WithStartOffset(offset int64) Option` | Sets the first offset the tracker will pop. |
+| `Push(offset int64, event Event)` | Registers an offset. Pushing an offset that is already tracked, already popped, or below the start offset is ignored. |
 | `MarkResolved(offset int64, status EventsTrackerStatus) error` | Sets an offset's status. Returns `ErrMissingOffset` if the offset isn't tracked. A failed offset can be re-marked later (e.g. after a retry). |
 | `PopResolved() []int64` | Removes and returns the contiguous resolved offsets from the head, in ascending order. Returns an empty slice if the head is pending/failed. |
 | `ResolvedCount() int64` | Number of `Success`/`DLQ` markings so far. |
@@ -80,7 +83,9 @@ Works directly with queues that expose per-partition `int64` offsets and a cumul
 
 ## Behavior notes
 
-- **Ordering:** offsets are popped in ascending order regardless of push order.
+- **Ordering:** offsets are popped in ascending, contiguous order regardless of push order, so a commit never skips an offset that hasn't been pushed yet.
+- **Concurrent pushes:** if offsets can be pushed out of order (e.g. each worker pushes its own), use `WithStartOffset`. Otherwise the very first pop can happen before the lowest offset is pushed.
+- **Offset gaps:** every offset must be pushed for the tracker to advance past it. If the log has gaps (e.g. Kafka compaction or transaction markers), push the missing offsets as `StatusSuccess`.
 - **Failed events block progress** until they are re-marked `Success` or `DLQ`. If you want to skip a poison message, mark it `StatusDLQ`.
 - **Commit errors are fatal to the loop:** if `commitFunc` returns an error, `StartCommitter` returns it. The offsets passed to that call have already been popped from the tracker, so handle retries inside your callback.
 - **Shutdown flush:** when `ctx` is cancelled, `StartCommitter` commits the resolved prefix once more before returning. The returned error wraps `ctx.Err()` and, if that final commit failed, the commit error too, so check it with `errors.Is`.

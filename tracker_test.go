@@ -6,6 +6,7 @@ import (
 	"github.com/yairp7/kmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -158,6 +159,135 @@ func TestTracker_DuplicatePushIsIgnored(t *testing.T) {
 	}
 	if got := et.PopResolved(); len(got) != 0 {
 		t.Fatalf("second PopResolved() = %v, want empty (no duplicate entry)", got)
+	}
+}
+
+func TestTracker_DoesNotPopPastOffsetNotYetPushed(t *testing.T) {
+	et := kmt.New()
+	pushPending(et, 0, 2)
+	mustMark(t, et, 0, kmt.StatusSuccess)
+	mustMark(t, et, 2, kmt.StatusSuccess)
+
+	if got, want := et.PopResolved(), []int64{0}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PopResolved() = %v, want %v while offset 1 is not pushed", got, want)
+	}
+
+	pushPending(et, 1)
+	mustMark(t, et, 1, kmt.StatusSuccess)
+	if got, want := et.PopResolved(), []int64{1, 2}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PopResolved() = %v, want %v", got, want)
+	}
+}
+
+func TestTracker_StartOffsetWaitsForFirstOffset(t *testing.T) {
+	et := kmt.New(kmt.WithStartOffset(10))
+	pushPending(et, 11)
+	mustMark(t, et, 11, kmt.StatusSuccess)
+
+	if got := et.PopResolved(); len(got) != 0 {
+		t.Fatalf("PopResolved() = %v, want empty until start offset 10 is resolved", got)
+	}
+
+	pushPending(et, 10)
+	mustMark(t, et, 10, kmt.StatusSuccess)
+	if got, want := et.PopResolved(), []int64{10, 11}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PopResolved() = %v, want %v", got, want)
+	}
+}
+
+func TestTracker_PushBelowStartOffsetIsIgnored(t *testing.T) {
+	et := kmt.New(kmt.WithStartOffset(5))
+	pushPending(et, 4)
+	if err := et.MarkResolved(4, kmt.StatusSuccess); !errors.Is(err, kmt.ErrMissingOffset) {
+		t.Fatalf("err = %v, want ErrMissingOffset for offset below start", err)
+	}
+}
+
+func TestTracker_LowerPushBeforeFirstPopMovesStart(t *testing.T) {
+	et := kmt.New()
+	pushPending(et, 2, 1)
+	mustMark(t, et, 2, kmt.StatusSuccess)
+
+	if got := et.PopResolved(); len(got) != 0 {
+		t.Fatalf("PopResolved() = %v, want empty while offset 1 is pending", got)
+	}
+
+	mustMark(t, et, 1, kmt.StatusSuccess)
+	if got, want := et.PopResolved(), []int64{1, 2}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PopResolved() = %v, want %v", got, want)
+	}
+}
+
+// A redelivered offset that was already popped must not be popped again.
+func TestTracker_PushOfPoppedOffsetIsIgnored(t *testing.T) {
+	et := kmt.New()
+	pushPending(et, 0, 1)
+	mustMark(t, et, 0, kmt.StatusSuccess)
+	mustMark(t, et, 1, kmt.StatusSuccess)
+	et.PopResolved()
+
+	pushPending(et, 1)
+	if err := et.MarkResolved(1, kmt.StatusSuccess); !errors.Is(err, kmt.ErrMissingOffset) {
+		t.Fatalf("err = %v, want ErrMissingOffset for already popped offset", err)
+	}
+	if got := et.PopResolved(); len(got) != 0 {
+		t.Fatalf("PopResolved() = %v, want empty", got)
+	}
+
+	// The tracker still advances normally afterwards.
+	pushPending(et, 2)
+	mustMark(t, et, 2, kmt.StatusSuccess)
+	if got, want := et.PopResolved(), []int64{2}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PopResolved() = %v, want %v", got, want)
+	}
+}
+
+// Run with -race: workers that push their own offsets race each other, and
+// pops must still come out contiguous.
+func TestTracker_ConcurrentPushPopsContiguously(t *testing.T) {
+	const n, workers = 50_000, 16
+	et := kmt.New(kmt.WithStartOffset(0))
+
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				o := next.Add(1) - 1
+				if o >= n {
+					return
+				}
+				et.Push(o, kmt.Event{Status: kmt.StatusPending})
+				if err := et.MarkResolved(o, kmt.StatusSuccess); err != nil {
+					t.Errorf("MarkResolved(%d): %v", o, err)
+					return
+				}
+			}
+		}()
+	}
+
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+
+	var popped []int64
+	for finished := false; !finished; {
+		select {
+		case <-done:
+			finished = true
+		default:
+		}
+		popped = append(popped, et.PopResolved()...)
+	}
+
+	if len(popped) != n {
+		t.Fatalf("popped %d offsets, want %d", len(popped), n)
+	}
+	for i, o := range popped {
+		if o != int64(i) {
+			t.Fatalf("popped[%d] = %d, want %d", i, o, i)
+		}
 	}
 }
 
