@@ -36,38 +36,18 @@ type EventsTrackerImpl struct {
 	resolvedOffsetCount  int64
 	committerOffsetCount int64
 	nextOffset           int64
-	nextOffsetKnown      bool
-	nextOffsetFixed      bool
 	uncommittedOffsets   []int64
 }
 
-type Option func(*EventsTrackerImpl)
-
-func WithStartOffset(offset int64) Option {
-	return func(et *EventsTrackerImpl) {
-		et.nextOffset = offset
-		et.nextOffsetKnown = true
-		et.nextOffsetFixed = true
-	}
-}
-
-func New(opts ...Option) *EventsTrackerImpl {
-	et := &EventsTrackerImpl{
+func New(startOffset int64) *EventsTrackerImpl {
+	return &EventsTrackerImpl{
 		offsets:              make(map[int64]*Event),
 		offsetsHeap:          NewMinHeap[*Event](),
 		resolvedOffsetCount:  0,
 		committerOffsetCount: -1,
-		nextOffset:           0,
-		nextOffsetKnown:      false,
-		nextOffsetFixed:      false,
+		nextOffset:           startOffset,
 		uncommittedOffsets:   make([]int64, 0),
 	}
-
-	for _, opt := range opts {
-		opt(et)
-	}
-
-	return et
 }
 
 func (et *EventsTrackerImpl) Push(offset int64, event Event) {
@@ -77,17 +57,12 @@ func (et *EventsTrackerImpl) Push(offset int64, event Event) {
 }
 
 func (et *EventsTrackerImpl) unsafePush(offset int64, event *Event) {
-	if et.nextOffsetFixed && offset < et.nextOffset {
+	if offset < et.nextOffset {
 		return
 	}
 
 	if _, ok := et.offsets[offset]; ok {
 		return
-	}
-
-	if !et.nextOffsetKnown || offset < et.nextOffset {
-		et.nextOffset = offset
-		et.nextOffsetKnown = true
 	}
 
 	et.offsets[offset] = event
@@ -133,7 +108,6 @@ func (et *EventsTrackerImpl) PopResolved() []int64 {
 		delete(et.offsets, offset)
 		offsets = append(offsets, offset)
 		et.nextOffset++
-		et.nextOffsetFixed = true
 	}
 
 	return offsets

@@ -25,21 +25,21 @@ func mustMark(t *testing.T, et *kmt.EventsTrackerImpl, offset int64, status kmt.
 }
 
 func TestTracker_PopResolvedEmpty(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(0)
 	if got := et.PopResolved(); len(got) != 0 {
 		t.Fatalf("PopResolved() = %v, want empty", got)
 	}
 }
 
 func TestTracker_MarkResolvedMissingOffset(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(0)
 	if err := et.MarkResolved(42, kmt.StatusSuccess); !errors.Is(err, kmt.ErrMissingOffset) {
 		t.Fatalf("err = %v, want ErrMissingOffset", err)
 	}
 }
 
 func TestTracker_PendingHeadBlocksResolvedBehindIt(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1, 2, 3)
 	mustMark(t, et, 2, kmt.StatusSuccess)
 	mustMark(t, et, 3, kmt.StatusSuccess)
@@ -57,7 +57,7 @@ func TestTracker_PendingHeadBlocksResolvedBehindIt(t *testing.T) {
 }
 
 func TestTracker_PopsOnlyContiguousResolvedPrefix(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1, 2, 3, 4)
 	mustMark(t, et, 1, kmt.StatusSuccess)
 	mustMark(t, et, 2, kmt.StatusSuccess)
@@ -74,7 +74,7 @@ func TestTracker_PopsOnlyContiguousResolvedPrefix(t *testing.T) {
 }
 
 func TestTracker_PopsInOffsetOrderRegardlessOfPushOrder(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 3, 1, 2)
 	for _, o := range []int64{2, 3, 1} {
 		mustMark(t, et, o, kmt.StatusSuccess)
@@ -86,7 +86,7 @@ func TestTracker_PopsInOffsetOrderRegardlessOfPushOrder(t *testing.T) {
 }
 
 func TestTracker_FailedHeadBlocksUntilRemarked(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1, 2)
 	mustMark(t, et, 1, kmt.StatusFailed)
 	mustMark(t, et, 2, kmt.StatusSuccess)
@@ -105,7 +105,7 @@ func TestTracker_FailedHeadBlocksUntilRemarked(t *testing.T) {
 func TestTracker_ResolvedOffsetCannotBeUnresolved(t *testing.T) {
 	for _, resolved := range []kmt.EventsTrackerStatus{kmt.StatusSuccess, kmt.StatusDLQ} {
 		for _, unresolved := range []kmt.EventsTrackerStatus{kmt.StatusPending, kmt.StatusFailed} {
-			et := kmt.New()
+			et := kmt.New(1)
 			pushPending(et, 1)
 			mustMark(t, et, 1, resolved)
 
@@ -120,7 +120,7 @@ func TestTracker_ResolvedOffsetCannotBeUnresolved(t *testing.T) {
 }
 
 func TestTracker_ResolvedOffsetCanSwitchBetweenSuccessAndDLQ(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1)
 	mustMark(t, et, 1, kmt.StatusSuccess)
 	mustMark(t, et, 1, kmt.StatusDLQ)
@@ -132,7 +132,7 @@ func TestTracker_ResolvedOffsetCanSwitchBetweenSuccessAndDLQ(t *testing.T) {
 }
 
 func TestTracker_DLQCountsAsResolved(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1)
 	mustMark(t, et, 1, kmt.StatusDLQ)
 
@@ -142,7 +142,7 @@ func TestTracker_DLQCountsAsResolved(t *testing.T) {
 }
 
 func TestTracker_PopResolvedDrainsOnce(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1, 2)
 	mustMark(t, et, 1, kmt.StatusSuccess)
 	mustMark(t, et, 2, kmt.StatusSuccess)
@@ -160,7 +160,7 @@ func TestTracker_PopResolvedDrainsOnce(t *testing.T) {
 }
 
 func TestTracker_DuplicatePushIsIgnored(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1)
 	mustMark(t, et, 1, kmt.StatusSuccess)
 	// Re-pushing a tracked offset must not reset its status or add a second heap entry.
@@ -175,7 +175,7 @@ func TestTracker_DuplicatePushIsIgnored(t *testing.T) {
 }
 
 func TestTracker_DoesNotPopPastOffsetNotYetPushed(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(0)
 	pushPending(et, 0, 2)
 	mustMark(t, et, 0, kmt.StatusSuccess)
 	mustMark(t, et, 2, kmt.StatusSuccess)
@@ -192,7 +192,7 @@ func TestTracker_DoesNotPopPastOffsetNotYetPushed(t *testing.T) {
 }
 
 func TestTracker_StartOffsetWaitsForFirstOffset(t *testing.T) {
-	et := kmt.New(kmt.WithStartOffset(10))
+	et := kmt.New(10)
 	pushPending(et, 11)
 	mustMark(t, et, 11, kmt.StatusSuccess)
 
@@ -208,31 +208,16 @@ func TestTracker_StartOffsetWaitsForFirstOffset(t *testing.T) {
 }
 
 func TestTracker_PushBelowStartOffsetIsIgnored(t *testing.T) {
-	et := kmt.New(kmt.WithStartOffset(5))
+	et := kmt.New(5)
 	pushPending(et, 4)
 	if err := et.MarkResolved(4, kmt.StatusSuccess); !errors.Is(err, kmt.ErrMissingOffset) {
 		t.Fatalf("err = %v, want ErrMissingOffset for offset below start", err)
 	}
 }
 
-func TestTracker_LowerPushBeforeFirstPopMovesStart(t *testing.T) {
-	et := kmt.New()
-	pushPending(et, 2, 1)
-	mustMark(t, et, 2, kmt.StatusSuccess)
-
-	if got := et.PopResolved(); len(got) != 0 {
-		t.Fatalf("PopResolved() = %v, want empty while offset 1 is pending", got)
-	}
-
-	mustMark(t, et, 1, kmt.StatusSuccess)
-	if got, want := et.PopResolved(), []int64{1, 2}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("PopResolved() = %v, want %v", got, want)
-	}
-}
-
 // A redelivered offset that was already popped must not be popped again.
 func TestTracker_PushOfPoppedOffsetIsIgnored(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(0)
 	pushPending(et, 0, 1)
 	mustMark(t, et, 0, kmt.StatusSuccess)
 	mustMark(t, et, 1, kmt.StatusSuccess)
@@ -258,7 +243,7 @@ func TestTracker_PushOfPoppedOffsetIsIgnored(t *testing.T) {
 // pops must still come out contiguous.
 func TestTracker_ConcurrentPushPopsContiguously(t *testing.T) {
 	const n, workers = 50_000, 16
-	et := kmt.New(kmt.WithStartOffset(0))
+	et := kmt.New(0)
 
 	var next atomic.Int64
 	var wg sync.WaitGroup
@@ -344,7 +329,7 @@ func startCommitter(et *kmt.EventsTrackerImpl, commit func([]int64) error) (canc
 }
 
 func TestCommitter_CommitsResolvedOffsets(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1, 2, 3)
 	c := &collector{}
 	cancel, done := startCommitter(et, c.commit)
@@ -366,7 +351,7 @@ func TestCommitter_CommitsResolvedOffsets(t *testing.T) {
 }
 
 func TestCommitter_DoesNotCommitWhileHeadPending(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1, 2)
 	c := &collector{}
 	cancel, done := startCommitter(et, c.commit)
@@ -412,7 +397,7 @@ func (c *failingCollector) snapshotAttempts() [][]int64 {
 }
 
 func TestCommitter_RetriesFailedCommit(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1, 2)
 	c := &failingCollector{failures: 3}
 	cancel, done := startCommitter(et, c.commit)
@@ -436,7 +421,7 @@ func TestCommitter_RetriesFailedCommit(t *testing.T) {
 // If the committer stops while a commit is still failing, a restarted
 // committer must retry those offsets rather than skip them.
 func TestCommitter_RestartRetriesUncommittedOffsets(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1, 2)
 	mustMark(t, et, 1, kmt.StatusSuccess)
 	mustMark(t, et, 2, kmt.StatusSuccess)
@@ -463,7 +448,7 @@ func TestCommitter_RestartRetriesUncommittedOffsets(t *testing.T) {
 
 // Offsets resolved while a commit keeps failing are merged into the retried batch.
 func TestCommitter_RetryIncludesNewlyResolvedOffsets(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1, 2)
 	c := &failingCollector{failures: 1 << 30}
 	cancel, done := startCommitter(et, c.commit)
@@ -489,7 +474,7 @@ func TestCommitter_RetryIncludesNewlyResolvedOffsets(t *testing.T) {
 }
 
 func TestCommitter_FlushesOnCancel(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1, 2)
 	mustMark(t, et, 1, kmt.StatusSuccess)
 	mustMark(t, et, 2, kmt.StatusSuccess)
@@ -508,7 +493,7 @@ func TestCommitter_FlushesOnCancel(t *testing.T) {
 }
 
 func TestCommitter_FlushErrorIsReturnedOnCancel(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1)
 	mustMark(t, et, 1, kmt.StatusSuccess)
 
@@ -522,7 +507,7 @@ func TestCommitter_FlushErrorIsReturnedOnCancel(t *testing.T) {
 }
 
 func TestCommitter_KeepsRunningAfterCommit(t *testing.T) {
-	et := kmt.New()
+	et := kmt.New(1)
 	pushPending(et, 1, 2)
 	c := &collector{}
 	cancel, done := startCommitter(et, c.commit)
@@ -544,7 +529,7 @@ func TestCommitter_KeepsRunningAfterCommit(t *testing.T) {
 // Run with -race: concurrent pushes, marks and commits must neither race nor lose offsets.
 func TestCommitter_ConcurrentMarksCommitEverythingInOrder(t *testing.T) {
 	const n = 500
-	et := kmt.New()
+	et := kmt.New(0)
 	for i := int64(0); i < n; i++ {
 		et.Push(i, kmt.Event{})
 	}

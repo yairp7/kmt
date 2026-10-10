@@ -9,7 +9,7 @@ import (
 
 // prefilled returns a tracker holding n pending events at offsets 0..n-1.
 func prefilled(n int) *kmt.EventsTrackerImpl {
-	et := kmt.New()
+	et := kmt.New(0)
 	for i := 0; i < n; i++ {
 		et.Push(int64(i), kmt.Event{})
 	}
@@ -17,7 +17,7 @@ func prefilled(n int) *kmt.EventsTrackerImpl {
 }
 
 func BenchmarkTracker_Push(b *testing.B) {
-	et := kmt.New()
+	et := kmt.New(0)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -44,7 +44,7 @@ func BenchmarkTracker_MarkResolved(b *testing.B) {
 }
 
 func BenchmarkTracker_MarkResolvedMissing(b *testing.B) {
-	et := kmt.New()
+	et := kmt.New(0)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -90,7 +90,7 @@ func BenchmarkTracker_PopResolved_Drain(b *testing.B) {
 func BenchmarkTracker_Cycle(b *testing.B) {
 	for _, backlog := range []int{0, 1_000, 100_000} {
 		b.Run(fmt.Sprintf("backlog=%d", backlog), func(b *testing.B) {
-			et := kmt.New()
+			et := kmt.New(0)
 			// Backlog sits at high offsets so the cycled offset is always the heap minimum.
 			base := int64(1) << 40
 			for i := 0; i < backlog; i++ {
@@ -109,7 +109,7 @@ func BenchmarkTracker_Cycle(b *testing.B) {
 }
 
 func BenchmarkTracker_ParallelPush(b *testing.B) {
-	et := kmt.New()
+	et := kmt.New(0)
 	var next atomic.Int64
 	b.ReportAllocs()
 	b.ResetTimer()
