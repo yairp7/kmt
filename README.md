@@ -72,7 +72,7 @@ go func() {
 | `New(opts ...Option) *EventsTrackerImpl` | Creates an empty tracker. |
 | `WithStartOffset(offset int64) Option` | Sets the first offset the tracker will pop. |
 | `Push(offset int64, event Event)` | Registers an offset. Pushing an offset that is already tracked, already popped, or below the start offset is ignored. |
-| `MarkResolved(offset int64, status EventsTrackerStatus) error` | Sets an offset's status. Returns `ErrMissingOffset` if the offset isn't tracked. A failed offset can be re-marked later (e.g. after a retry). |
+| `MarkResolved(offset int64, status EventsTrackerStatus) error` | Sets an offset's status. Returns `ErrMissingOffset` if the offset isn't tracked. A failed offset can be re-marked later (e.g. after a retry). Returns `ErrAlreadyResolved` if a `Success`/`DLQ` offset is marked `Pending` or `Failed`. |
 | `PopResolved() []int64` | Removes and returns the contiguous resolved offsets from the head, in ascending order. Returns an empty slice if the head is pending/failed. |
 | `StartCommitter(ctx, interval, commitFunc) error` | Periodic commit loop described above. |
 | `MinHeap[T]` | Generic offset-keyed min-heap (`Push`, `Pop`, `Peek`, `Len`) used internally; also exported. |
@@ -89,6 +89,7 @@ Works directly with queues that expose per-partition `int64` offsets and a cumul
 - **Concurrent pushes:** if offsets can be pushed out of order (e.g. each worker pushes its own), use `WithStartOffset`. Otherwise the very first pop can happen before the lowest offset is pushed.
 - **Offset gaps:** every offset must be pushed for the tracker to advance past it. If the log has gaps (e.g. Kafka compaction or transaction markers), push the missing offsets as `StatusSuccess`.
 - **Failed events block progress** until they are re-marked `Success` or `DLQ`. If you want to skip a poison message, mark it `StatusDLQ`.
+- **Resolved is final:** a `Success` or `DLQ` offset can't be marked `Pending` or `Failed` again, so a late or duplicate worker can't re-block the head. Switching between `Success` and `DLQ` is allowed.
 - **Commit errors are retried:** if `commitFunc` returns an error, the committer keeps the batch and passes it again on the next tick, extended with any offsets resolved since. The loop does not stop on commit errors, so log or alert from inside `commitFunc`. While the broker is unavailable the retried batch keeps growing. The batch is kept on the tracker, so if the committer stops with it still uncommitted, the next `StartCommitter` on the same tracker retries it first.
 - **Shutdown flush:** when `ctx` is cancelled, `StartCommitter` commits any uncommitted offsets once more before returning. The returned error wraps `ctx.Err()` and, if that final commit failed, the commit error too, so check it with `errors.Is`.
 - Run only one `StartCommitter` per tracker.

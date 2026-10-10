@@ -17,6 +17,7 @@ const (
 )
 
 var ErrMissingOffset = errors.New("offset is missing")
+var ErrAlreadyResolved = errors.New("offset is already resolved")
 
 type Event struct {
 	Status EventsTrackerStatus
@@ -98,6 +99,11 @@ func (et *EventsTrackerImpl) MarkResolved(offset int64, status EventsTrackerStat
 	defer et.lock.Unlock()
 
 	if e, ok := et.offsets[offset]; ok {
+		isResolved := e.Status == StatusDLQ || e.Status == StatusSuccess
+		if isResolved && (status == StatusPending || status == StatusFailed) {
+			return ErrAlreadyResolved
+		}
+
 		e.Status = status
 
 		if status == StatusDLQ || status == StatusSuccess {

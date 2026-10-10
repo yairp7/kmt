@@ -101,6 +101,36 @@ func TestTracker_FailedHeadBlocksUntilRemarked(t *testing.T) {
 	}
 }
 
+// A late or duplicate worker must not re-block an offset that is already resolved.
+func TestTracker_ResolvedOffsetCannotBeUnresolved(t *testing.T) {
+	for _, resolved := range []kmt.EventsTrackerStatus{kmt.StatusSuccess, kmt.StatusDLQ} {
+		for _, unresolved := range []kmt.EventsTrackerStatus{kmt.StatusPending, kmt.StatusFailed} {
+			et := kmt.New()
+			pushPending(et, 1)
+			mustMark(t, et, 1, resolved)
+
+			if err := et.MarkResolved(1, unresolved); !errors.Is(err, kmt.ErrAlreadyResolved) {
+				t.Fatalf("MarkResolved(%v -> %v) err = %v, want ErrAlreadyResolved", resolved, unresolved, err)
+			}
+			if got, want := et.PopResolved(), []int64{1}; !reflect.DeepEqual(got, want) {
+				t.Fatalf("PopResolved() after rejected %v -> %v = %v, want %v", resolved, unresolved, got, want)
+			}
+		}
+	}
+}
+
+func TestTracker_ResolvedOffsetCanSwitchBetweenSuccessAndDLQ(t *testing.T) {
+	et := kmt.New()
+	pushPending(et, 1)
+	mustMark(t, et, 1, kmt.StatusSuccess)
+	mustMark(t, et, 1, kmt.StatusDLQ)
+	mustMark(t, et, 1, kmt.StatusSuccess)
+
+	if got, want := et.PopResolved(), []int64{1}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PopResolved() = %v, want %v", got, want)
+	}
+}
+
 func TestTracker_DLQCountsAsResolved(t *testing.T) {
 	et := kmt.New()
 	pushPending(et, 1)
