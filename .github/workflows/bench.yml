@@ -21,7 +21,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Run benchmarks
-        run: go test -run '^$' -bench . -benchmem -count 3 ./... | tee bench.txt
+        run: go test -run '^$' -bench . -benchmem ./... | tee bench.txt
       - uses: actions/upload-artifact@v7
         with:
           name: bench-results
