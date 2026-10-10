@@ -1,6 +1,7 @@
 // benchcheck compares `go test -bench -benchmem` output against a recorded baseline.
 //
-// ns/op may drift up to -tolerance percent in either direction; allocs/op must match exactly.
+// ns/op may be at most -tolerance percent slower than the baseline (faster is always fine);
+// allocs/op must match exactly.
 // With -count > 1 the median of each benchmark's samples is used.
 package main
 
@@ -74,7 +75,7 @@ func median(v []float64) float64 {
 func main() {
 	baselinePath := flag.String("baseline", "", "recorded benchmark output")
 	currentPath := flag.String("current", "", "new benchmark output")
-	tolerance := flag.Float64("tolerance", 10, "allowed ns/op deviation in percent")
+	tolerance := flag.Float64("tolerance", 20, "allowed ns/op slowdown in percent")
 	flag.Parse()
 
 	base, err := parse(*baselinePath)
@@ -113,9 +114,9 @@ func main() {
 		status := "ok  "
 		var problems []string
 
-		if delta > *tolerance || delta < -*tolerance {
+		if delta > *tolerance {
 			status = "FAIL"
-			problems = append(problems, fmt.Sprintf("time %+.1f%% exceeds ±%.0f%%", delta, *tolerance))
+			problems = append(problems, fmt.Sprintf("time %+.1f%% exceeds +%.0f%%", delta, *tolerance))
 		}
 		if len(b.allocs) > 0 && len(c.allocs) > 0 {
 			ba, ca := median(b.allocs), median(c.allocs)

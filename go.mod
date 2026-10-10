@@ -1,3 +1,3 @@
 module github.com/yairp7/kmt
 
-go 1.19
+go 1.22

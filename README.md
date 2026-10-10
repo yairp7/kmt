@@ -8,11 +8,13 @@ This is the typical problem when consuming from a log (Kafka-style) with concurr
 import "github.com/yairp7/kmt"
 ```
 
-Requires Go 1.19+. Standard library only.
+Requires Go 1.22+. Standard library only.
 
 ## How it works
 
-Each event is registered by its offset with a status. Offsets are kept in a min-heap, so the lowest offset is always at the head. `PopResolved` removes and returns offsets from the head **only while they are resolved**; it stops at the first `Pending` or `Failed` offset. Anything behind a blocked head stays in the tracker until the head is resolved.
+Each event is registered by its offset with a status. Offsets are kept in a min-heap, so the lowest offset is always at the head. `PopResolved` removes and returns offsets from the head **only while they are resolved and contiguous**; it stops at the first `Pending` or `Failed` offset, or at a gap where the next offset hasn't been pushed yet. Anything behind a blocked head stays in the tracker until the head is resolved.
+
+The tracker remembers the next offset it expects to pop, starting from the offset passed to `New`, typically the partition's committed offset + 1.
 
 | Status          | Meaning                                        | Blocks commit? | Counts as resolved? |
 |-----------------|------------------------------------------------|----------------|---------------------|
@@ -24,7 +26,7 @@ Each event is registered by its offset with a status. Offsets are kept in a min-
 ## Usage
 
 ```go
-et := kmt.New()
+et := kmt.New(1) // first offset to commit, e.g. committed offset + 1
 
 // Register events as they are consumed.
 et.Push(1, kmt.Event{Status: kmt.StatusPending})
@@ -43,7 +45,7 @@ et.PopResolved() // [1 2 3]
 
 ### Background committer
 
-`StartCommitter` polls on an interval, pops the contiguous resolved prefix, and hands it to your commit callback. It blocks until the context is cancelled or the callback returns an error, so run it in its own goroutine.
+`StartCommitter` polls on an interval, pops the contiguous resolved prefix, and hands it to your commit callback. It blocks until the context is cancelled, so run it in its own goroutine. If the callback returns an error, the same offsets, plus any resolved since, are passed again on the next tick. On cancellation it makes one final commit of whatever is still uncommitted, so `commitFunc` may be called after `ctx` is done.
 
 ```go
 ctx, cancel := context.WithCancel(context.Background())
@@ -52,11 +54,14 @@ defer cancel()
 go func() {
     err := et.StartCommitter(ctx, 500*time.Millisecond, func(offsets []int64) error {
         // e.g. commit offsets[len(offsets)-1] to your broker
-        return commit(offsets)
+        if err := commit(offsets); err != nil {
+            log.Printf("commit failed, will retry: %v", err)
+            return err
+        }
+        return nil
     })
-    if err != nil && !errors.Is(err, context.Canceled) {
-        log.Printf("committer stopped: %v", err)
-    }
+    // err always wraps ctx.Err(); it also wraps the final commit's error if that failed.
+    log.Printf("committer stopped: %v", err)
 }()
 ```
 
@@ -64,11 +69,10 @@ go func() {
 
 | Symbol | Description |
 |--------|-------------|
-| `New() *EventsTrackerImpl` | Creates an empty tracker. |
-| `Push(offset int64, event Event)` | Registers an offset. Pushing an offset that is already tracked is ignored. |
-| `MarkResolved(offset int64, status EventsTrackerStatus) error` | Sets an offset's status. Returns `ErrMissingOffset` if the offset isn't tracked. A failed offset can be re-marked later (e.g. after a retry). |
+| `New(startOffset int64) *EventsTrackerImpl` | Creates an empty tracker that pops from `startOffset` onwards. |
+| `Push(offset int64, event Event)` | Registers an offset. Pushing an offset that is already tracked, already popped, or below the start offset is ignored. |
+| `MarkResolved(offset int64, status EventsTrackerStatus) error` | Sets an offset's status. Returns `ErrMissingOffset` if the offset isn't tracked. A failed offset can be re-marked later (e.g. after a retry). Returns `ErrAlreadyResolved` if a `Success`/`DLQ` offset is marked `Pending` or `Failed`. |
 | `PopResolved() []int64` | Removes and returns the contiguous resolved offsets from the head, in ascending order. Returns an empty slice if the head is pending/failed. |
-| `ResolvedCount() int64` | Number of `Success`/`DLQ` markings so far. |
 | `StartCommitter(ctx, interval, commitFunc) error` | Periodic commit loop described above. |
 | `MinHeap[T]` | Generic offset-keyed min-heap (`Push`, `Pop`, `Peek`, `Len`) used internally; also exported. |
 
@@ -80,9 +84,13 @@ Works directly with queues that expose per-partition `int64` offsets and a cumul
 
 ## Behavior notes
 
-- **Ordering:** offsets are popped in ascending order regardless of push order.
+- **Ordering:** offsets are popped in ascending, contiguous order regardless of push order, so a commit never skips an offset that hasn't been pushed yet.
+- **Concurrent pushes:** offsets can be pushed in any order (e.g. each worker pushes its own); nothing is popped until `startOffset` and every offset after it up to the head are resolved.
+- **Offset gaps:** every offset must be pushed for the tracker to advance past it. If the log has gaps (e.g. Kafka compaction or transaction markers), push the missing offsets as `StatusSuccess`.
 - **Failed events block progress** until they are re-marked `Success` or `DLQ`. If you want to skip a poison message, mark it `StatusDLQ`.
-- **Commit errors are fatal to the loop:** if `commitFunc` returns an error, `StartCommitter` returns it. The offsets passed to that call have already been popped from the tracker, so handle retries inside your callback.
+- **Resolved is final:** a `Success` or `DLQ` offset can't be marked `Pending` or `Failed` again, so a late or duplicate worker can't re-block the head. Switching between `Success` and `DLQ` is allowed.
+- **Commit errors are retried:** if `commitFunc` returns an error, the committer keeps the batch and passes it again on the next tick, extended with any offsets resolved since. The loop does not stop on commit errors, so log or alert from inside `commitFunc`. While the broker is unavailable the retried batch keeps growing. The batch is kept on the tracker, so if the committer stops with it still uncommitted, the next `StartCommitter` on the same tracker retries it first.
+- **Shutdown flush:** when `ctx` is cancelled, `StartCommitter` commits any uncommitted offsets once more before returning. The returned error wraps `ctx.Err()` and, if that final commit failed, the commit error too, so check it with `errors.Is`.
 - Run only one `StartCommitter` per tracker.
 
 ## Development
